@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>极验第四代风格 · 滑动拼图验证组件</title>
+<link rel="stylesheet" href="css/gt-captcha.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 24px 80px;
+    background: #f4f6fa;
+    color: #292f3a;
+    font-family: Arial, "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 860px; margin: 0 auto; }
+  h1 { margin: 0 0 8px; font-size: 24px; font-weight: 600; letter-spacing: -.2px; }
+  .sub { margin: 0 0 32px; color: #7a8296; font-size: 14px; line-height: 1.7; }
+  .sub code { background: #e9edf5; padding: 1px 6px; border-radius: 3px; font-size: 12.5px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  @media (min-width: 760px) { .grid { grid-template-columns: 380px 1fr; } }
+
+  .card {
+    background: #fff;
+    border: 1px solid #e3e7f0;
+    border-radius: 10px;
+    padding: 26px 24px;
+    box-shadow: 0 2px 10px rgba(30, 45, 90, .05);
+  }
+  .card h2 {
+    margin: 0 0 18px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #4a5468;
+    letter-spacing: .2px;
+  }
+
+  /* 模拟业务表单 */
+  .field { margin-bottom: 16px; }
+  .field label { display: block; margin-bottom: 7px; font-size: 13px; color: #6b7488; }
+  .field input {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid #dfe4ee;
+    border-radius: 6px;
+    background: #fbfcfe;
+    color: #292f3a;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .field input:focus { border-color: #5381fd; box-shadow: 0 0 0 3px rgba(83,129,253,.12); }
+
+  #captcha { margin: 6px 0 4px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn {
+    height: 38px;
+    padding: 0 16px;
+    border: 1px solid #dfe4ee;
+    border-radius: 6px;
+    background: #fff;
+    color: #4a5468;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .18s;
+  }
+  .btn:hover { border-color: #b9c6e4; color: #2f3a52; }
+  .btn.primary { border-color: #5381fd; background: #5381fd; color: #fff; }
+  .btn.primary:hover { background: #4272f5; }
+  .btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+
+  .status {
+    margin-top: 18px;
+    padding: 11px 13px;
+    border-radius: 6px;
+    background: #f6f8fc;
+    border: 1px solid #e8ecf5;
+    color: #6b7488;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .status.ok { background: #eef9ec; border-color: #cfecc8; color: #2f8b1e; }
+  .status.err { background: #fdeeeb; border-color: #f8d2c9; color: #c93f1c; }
+  .status b { font-weight: 600; }
+
+  /* 形状选择器 */
+  .shapes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .shape-chip {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid #dfe4ee;
+    border-radius: 20px;
+    background: #fff;
+    color: #6b7488;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .16s;
+  }
+  .shape-chip:hover { border-color: #b9c6e4; color: #2f3a52; }
+  .shape-chip.on { border-color: #5381fd; background: #eef3ff; color: #3b5bd0; font-weight: 600; }
+
+  /* 规格表 */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #eef1f7; }
+  th { color: #8b93a7; font-weight: 500; font-size: 12px; letter-spacing: .3px; }
+  td:first-child, th:first-child { width: 88px; white-space: nowrap; }
+  td:first-child { color: #4a5468; }
+  td code, .mono {
+    font-family: Consolas, "SF Mono", Monaco, monospace;
+    font-size: 12.3px;
+    color: #3b5bd0;
+    background: #f2f5fd;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .swatch {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    vertical-align: -1px;
+    margin-right: 6px;
+    border: 1px solid rgba(0,0,0,.08);
+  }
+
+  pre {
+    margin: 0;
+    padding: 16px 18px;
+    background: #1e2430;
+    border-radius: 8px;
+    overflow-x: auto;
+    color: #cdd6e6;
+    font-family: Consolas, "SF Mono", Monaco, monospace;
+    font-size: 12.6px;
+    line-height: 1.75;
+  }
+  pre .k { color: #7fb2ff; }
+  pre .s { color: #9fd88a; }
+  pre .c { color: #6a7688; }
+
+  .note {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-left: 3px solid #ffb800;
+    background: #fffaf0;
+    border-radius: 0 6px 6px 0;
+    color: #8a6a12;
+    font-size: 12.8px;
+    line-height: 1.75;
+  }
+  .full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>极验第四代风格 · 滑动拼图验证</h1>
+  <p class="sub">
+    按官方 <code>gcaptcha4.css</code>（v1.9.7-0ad79a）的几何比例与配色逐项还原，
+    面板宽 340px，所有尺寸使用官方原始百分比，可等比缩放。
+    背景图与拼图块由 Canvas 现场生成，无任何外部图片依赖。
+  </p>
+
+  <div class="grid">
+    <!-- 演示 -->
+    <div class="card">
+      <h2>在线体验</h2>
+      <div class="field">
+        <label>手机号</label>
+        <input type="text" placeholder="请输入手机号" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>验证码</label>
+        <input type="text" placeholder="请输入验证码" autocomplete="off">
+      </div>
+
+      <div id="captcha"></div>
+
+      <div class="field" style="margin-top:14px">
+        <label>切块形状（点一下即时切换）</label>
+        <div class="shapes" id="shapes"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="submit" disabled>登录</button>
+        <button class="btn" id="redo">换一题</button>
+        <button class="btn" id="theme-toggle" style="margin-left:auto">深色主题</button>
+      </div>
+
+      <div class="status" id="status">请先完成安全验证</div>
+    </div>
+
+    <!-- 规格对照 -->
+    <div class="card">
+      <h2>规格对照（取自官方 CSS）</h2>
+      <table>
+        <tr><th>元素</th><th>官方数值</th></tr>
+        <tr><td>面板宽度</td><td><code>340px</code>，<code>max-height: 386px</code></td></tr>
+        <tr><td>圆角 / 边框</td><td><code>4px</code> / <code>1px solid #dedede</code>（无上边框）</td></tr>
+        <tr><td>面板阴影</td><td><code>0 4px 10px rgba(0,0,0,.1)</code></td></tr>
+        <tr><td>顶部状态条</td><td><code>6px</code>，<span class="swatch" style="background:#5381fd"></span><code>#5381fd</code></td></tr>
+        <tr><td>标题区高度</td><td><code>17.752%</code>，字号 <code>16px</code> <code>#292f3a</code></td></tr>
+        <tr><td>图片区比例</td><td><code>66.7%</code>（3 : 2）</td></tr>
+        <tr><td>滑轨</td><td>高 <code>6%</code>，圆角 <code>10px</code>，<span class="swatch" style="background:#dee3eb"></span><code>#dee3eb</code>，内阴影 <code>0 0 4px rgba(0,0,0,.1)</code></td></tr>
+        <tr><td>滑块按钮</td><td>官方 <code>26.83% × 16.77%</code>（80 × 50），本项目默认收小到 <code>16% × 10%</code>（48 × 30）</td></tr>
+        <tr><td>拼图块</td><td>官方边长 <code>80px</code>（占图宽 26.67%），本项目默认 <code>48px</code>（16%，与按钮等宽）</td></tr>
+        <tr><td>按钮渐变</td><td><span class="swatch" style="background:#6d93fd"></span><code>linear-gradient(180deg,#6d93fd,#5682fd)</code></td></tr>
+        <tr><td>箭头尺寸</td><td><code>19px × 16px</code>，居中</td></tr>
+        <tr><td>底栏高度</td><td><code>18.935%</code>，图标 <code>25px</code>（字形 20~24px），字标 <code>72×16</code></td></tr>
+        <tr><td>成功色</td><td><span class="swatch" style="background:#39c522"></span><code>#39c522</code></td></tr>
+        <tr><td>失败色</td><td><span class="swatch" style="background:#ff5d39"></span><code>#ff5d39</code></td></tr>
+        <tr><td>警示色</td><td><span class="swatch" style="background:#ffb800"></span><code>#ffb800</code></td></tr>
+        <tr><td>统一缓动</td><td><code>cubic-bezier(.65, 0, .35, 1)</code> —— 官方全部动效都用这条，无一例外</td></tr>
+        <tr><td>失败抖动</td><td><code>geetest_shake .2s linear 2 both</code>，抖的是 <code>margin-left</code>（不是 transform）</td></tr>
+        <tr><td>换题切换</td><td>旧题 <code>mvToLeft</code> 向左滑出 → 新题 <code>mvToCenter</code> 从右滑入，均 <code>.6s</code>，新题带 <code>.1s</code> 延迟</td></tr>
+      </table>
+      <div class="note">
+        <b>逐项对账。</b>本地实现与官方 <code>gcaptcha4.css</code> 做了逐项 <code>getComputedStyle</code>
+        比对：<b>阴影与外观 15 / 15 一致</b>、<b>动画 10 / 10 一致</b>、
+        <b>@keyframes 逐帧 9 组全部一致</b>（其中 <code>statusmove</code> 为写法不同但等价）。
+        详见下方「官方对账」。
+      </div>
+      <div class="note">
+        <b>滑块尺寸可调。</b>官方按钮是 80 × 50（占图片宽 26.83% × 16.77%），在 18px 轨道上偏大，
+        本项目默认收到 <b>48 × 30</b>（16% × 10%）—— 正好等于拼图块本体宽度，
+        复刻官方「切块与按钮等宽」的设计。要改尺寸覆盖 CSS 变量即可：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          :root {<br>
+          &nbsp;&nbsp;--gt-btn-w: 16%;&nbsp;&nbsp;&nbsp;/* 宽（相对图片宽度）*/<br>
+          &nbsp;&nbsp;--gt-btn-h: 10%;&nbsp;&nbsp;&nbsp;/* 高 */<br>
+          &nbsp;&nbsp;--gt-arrow-w: 19px;&nbsp;--gt-arrow-h: 16px;<br>
+          &nbsp;&nbsp;--gt-track-h: 6%;&nbsp;&nbsp;&nbsp;/* 轨道高 */<br>
+          }
+        </div>
+        想完全还原官方：<code>--gt-btn-w:26.83%; --gt-btn-h:16.77%</code>，拼图块传 <code>pieceSize: 80</code>。
+      </div>
+      <div class="note" style="border-left-color:#5381fd;background:#f4f7ff;color:#3b5bd0">
+        <b>拼图块同样可调。</b>官方拼图块边长 80px / 背景宽 300px = <b>26.67%</b>，
+        占掉图片近 1/4 宽、40% 高，在 300 × 200 的图上很压。本项目默认收到 <b>48px</b>（16%），
+        凹凸半径按 <code>13/80</code> 的比例跟着缩放，形状比例与官方完全一致。
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          GtCaptcha.init({<br>
+          &nbsp;&nbsp;el: '#captcha',<br>
+          &nbsp;&nbsp;pieceSize: 48&nbsp;&nbsp;&nbsp;/* 拼图块边长（原图像素），建议 40 ~ 80 */<br>
+          });
+        </div>
+        注意：拼图块 48px 恰好等于按钮宽度 16%（48px）—— 官方原本就让两者等宽
+        （切块 26.67% ≈ 按钮 26.83%），收小后这个关系仍然保持，拖动时手感一致。
+        若换成带凸起的形状（如默认的经典拼图），切块可见宽度会比按钮略宽
+        （凸起不占本体），想完全等宽就用 <code>shape: 'wedge'</code>。
+      </div>
+      <div class="note" style="border-left-color:#39c522;background:#f2fbf0;color:#2f7a1c">
+        <b>成功收回动效。</b>验证通过后：绿色提示条滑入、状态条与开合层描边转绿，
+        <b>滑块按钮和拼图块都停在原位不动</b>（官方就是如此 —— CSS 里没有任何规则
+        在成功时改 <code>.geetest_btn</code> 的位置，那些 success 动画都属于绑定手机号
+        和其他验证类型），→（延迟到 1000ms）<b>整个面板收回</b>：走官方 <code>hideBox</code>
+        —— <code>.gt-box-layer-btn</code> 从铺满面板的尺寸缩回 260 × 50，
+        两条 6px 描边同时反向收线，且成功态下描边是绿色。详见下方「成功收回动画」。
+        <br>按钮与拼图块在代码里是解耦的（<code>_setBtn(x, keepPiece)</code>），
+        所以"只让其中一个动"是支持的，只是成功态按官方行为两者都不动。
+      </div>
+      <div class="note" style="border-left-color:#ff5d39;background:#fff5f2;color:#a8371f">
+        <b>失败换题。</b>官方验证失败后会<b>重新下发一道随机题</b>（新背景 + 新缺口位置），
+        切换动效是旧题 <code>mvToLeft</code> 向左滑出、新题 <code>mvToCenter</code> 从右滑入。
+        本项目对齐了这套流程：提示条 + 状态条转 <code>#ff5d39</code> + 抖动 →
+        900ms 后换题。不想换题、只在原题上重试，传 <code>renewOnFail: false</code>。
+        详见下方「换题切换动画」。
+      </div>
+      <div class="note" style="border-left-color:#7b61ff;background:#f7f5ff;color:#4b3bb0">
+        <b>深色主题与无动画。</b>两档开关，都是 CSS 侧的实现，不用改结构。
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          GtCaptcha.init({ theme: <span class="s">'dark'</span> });&nbsp;&nbsp;<span class="c">// 给 .gt-box 挂 .gt-dark</span><br>
+          &lt;html class="gt-no-animate"&gt;&nbsp;&nbsp;<span class="c">// 手动全局关掉所有动画</span>
+        </div>
+        此外组件已接上 <code>@media (prefers-reduced-motion: reduce)</code> ——
+        系统开了「减弱动态效果」时，开合、标题淡入、遮罩、换题横滑会自动全部关掉，
+        不需要额外配置。
+      </div>
+    </div>
+
+    <!-- 切块形状 -->
+    <div class="card full">
+      <h2>切块形状（内置 12 种，可自己加）</h2>
+      <div class="note" style="border-left-color:#5381fd;background:#f4f7ff;color:#3b5bd0">
+        <b>缺口和切块用的是同一条 Canvas 路径</b>，所以任何形状都能严丝合缝对上 ——
+        每个形状都把切块对正缺口验过，暗边一点都不露。
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          shape: 'jigsaw'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 单个形状<br>
+          shape: ['jigsaw', 'star', 'circle']&nbsp;&nbsp;// 数组 = 每题随机取一个
+        </div>
+      </div>
+      <div class="note" style="border-left-color:#39c522;background:#f2fbf0;color:#2f7a1c">
+        <b>怎么加自己的形状。</b>形状表就是一个 <code>{ label, pad, path }</code>：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          GtCaptcha.registerShape('heart', {<br>
+          &nbsp;&nbsp;label: '爱心',<br>
+          &nbsp;&nbsp;// 形状相对 size×size 方框向外溢出的量。溢出多少就报多少，<br>
+          &nbsp;&nbsp;// 报少了缺口会压到图片边缘、切块会被画布裁掉。<br>
+          &nbsp;&nbsp;pad: function (size, tab) { return { l: 0, t: 0, r: 0, b: 0 }; },<br>
+          &nbsp;&nbsp;// 在 (x, y) 处画一个 size×size 的闭合路径，用 ctx 画什么都可以<br>
+          &nbsp;&nbsp;path: function (ctx, x, y, size, tab) {<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;ctx.beginPath();<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;ctx.moveTo(x + size / 2, y + size * 0.82);<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;ctx.bezierCurveTo(x - size * 0.2, y + size * 0.5,<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;x + size * 0.12, y - size * 0.16, x + size / 2, y + size * 0.24);<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;ctx.bezierCurveTo(x + size * 0.88, y - size * 0.16,<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;x + size * 1.2, y + size * 0.5, x + size / 2, y + size * 0.82);<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;ctx.closePath();<br>
+          &nbsp;&nbsp;}<br>
+          });<br>
+          <span style="color:#6b7488">// 然后就能用了：GtCaptcha.init({ shape: 'heart' })</span>
+        </div>
+        <b>两条硬约束：</b>
+        ① <code>path</code> 必须是<b>确定性</b>的 —— 缺口和切块各调用一次，
+        中间不能有随机数，否则两者画出来不是同一个形状，缺口会露边；
+        想要随机形状，随机在「选形状」那一层（传数组），别在画路径那一层。
+        ② <code>pad</code> 要如实申报溢出量。
+      </div>
+      <div class="note" style="border-left-color:#7b61ff;background:#f7f5ff;color:#4b3bb0">
+        <b>画圆角块不用手算贝塞尔。</b>官方那两种圆角形状（<code>wedge</code> / <code>arrow</code>）
+        就是拿这个工具两行写出来的，它已导出：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          <span style="color:#6b7488">// 顶点数组 + 圆角半径 → 一条带圆角的闭合路径</span><br>
+          <span style="color:#6b7488">// 半径会自动收敛到相邻边长的一半以内，小形状也不会画崩</span><br>
+          GtCaptcha.roundedPolygon(ctx, [[x + size / 2, y + size * 0.88],<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[x, y],<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[x + size, y]], size * 0.18);
+        </div>
+        所以加一个「圆角六边形」「圆角五角星」也就是把顶点列出来、给个半径的事。
+      </div>
+    </div>
+
+    <!-- 成功收回动画 -->
+    <div class="card full">
+      <h2>成功收回动画（验证通过后面板收回）</h2>
+      <div class="note" style="border-left-color:#39c522;background:#f2fbf0;color:#2f7a1c">
+        <b>官方是怎么做的。</b>官方 <code>.geetest_box_layer</code> 里有个 <code>260 × 50</code> 的
+        <code>.geetest_box_btn</code> —— 尺寸正好等于触发按钮。开面板时 <code>showBox</code>
+        把它从 260 × 50 长到 <code>100% × 100%</code>，所以面板本质上是"从按钮长出来的"；
+        <code>.geetest_hideBox</code> 就是 <code>showBox</code> 的反向，而且成功态下描边会变绿：
+        <code>.geetest_success .geetest_box_btn:before/:after { background: #39c522 }</code>。
+      </div>
+      <div class="note" style="border-left-color:#5381fd;background:#f4f7ff;color:#3b5bd0">
+        <b>本项目的实现。</b>不再自己算"朝按钮缩小的位移"，而是<b>照抄官方的机制</b>：
+        <code>.gt-box-layer-btn</code>（260 × 50、<code>border:1px solid #dfdfdf</code>、
+        <code>box-shadow:0 4px 10px rgba(0,0,0,.02)</code>）用 <code>gt-showBox</code> /
+        <code>gt-hideBox</code> 在 <code>260×50 ↔ 100%×100%</code> 之间长/缩，
+        <code>::before</code> 铺顶边横线（<code>gt-lineRight</code>）、
+        <code>::after</code> 铺左边竖线（<code>gt-lineUp</code>），三者共用
+        <code>.4s cubic-bezier(.65,0,.35,1)</code>：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          @keyframes gt-showBox&nbsp;&nbsp;{ to { width:100%; height:100%; } }<br>
+          @keyframes gt-lineRight { 99% { border-radius:4px 4px 4px 0; }<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;to { width:100%; border-radius:4px 4px 0 0; } }<br>
+          @keyframes gt-lineUp&nbsp;&nbsp;&nbsp;{ to { height:100%; } }
+        </div>
+        时序：绿色提示条与描边转绿 → 1000ms 后面板收回 → 动画结束才摘掉
+        <code>gt-open</code>（<b>先动再消失</b>，否则 <code>display:none</code> 会把动画掐断）。
+        主动关闭（点遮罩 / 按 ESC）走的是同一套动画。<br>
+        不想让面板自动收回，传 <code>closeOnSuccess: false</code>，面板会留在原地展示结果。
+      </div>
+    </div>
+
+    <!-- 换题切换动画 -->
+    <div class="card full">
+      <h2>换题切换动画（验证失败 / 点「换一题」）</h2>
+      <div class="note" style="border-left-color:#5381fd;background:#f4f7ff;color:#3b5bd0">
+        <b>官方是怎么做的。</b>官方有两套动画专门管换题，名字很反直觉（<code>mvToLeft</code>
+        看着像"收回"，其实是横滑）：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          .geetest_mvToLeft { animation: mvToLeft .6s cubic-bezier(.65,0,.35,1) forwards !important; }<br>
+          .geetest_subitem&nbsp;&nbsp;{ animation: mvToCenter .6s cubic-bezier(.65,0,.35,1) .1s forwards; }
+        </div>
+        <code>mvToLeft</code>：<code>scale(1) → scale(.95)</code> 再
+        <code>translate3d(-120%,0,0)</code> 滑出画面；<br>
+        <code>mvToCenter</code>：从 <code>translate3d(120%,0,0)</code> 滑入，70% 处回到原位并复原到
+        <code>scale(1)</code>。官方 <code>.geetest_subitem</code> 就是"一整个子题"（图 + 轨道 + 滑块），
+        对应本项目的 <code>.gt-slide</code>。
+      </div>
+      <div class="note" style="border-left-color:#ffb800;background:#fffaf0;color:#8a6300">
+        <b>一个必须一起抄的细节。</b><code>mvToCenter</code> 的 fill-mode 只有
+        <code>forwards</code>、<b>没有 <code>backwards</code></b>，所以那 <code>.1s</code>
+        延迟期间套用不上任何关键帧值 —— 官方靠 <code>.geetest_subitem</code> 的基础样式
+        <code>opacity:0</code> 把它藏住。少抄这一条，新题会先在原位<b>闪 0.1s</b> 再瞬移到右侧滑入。
+        <br>本项目把它写在状态类里，并在动画结束后<b>摘掉类</b>：<code>.gt-mv-center</code> 一残留，
+        动画被打断或遇到 <code>animation:none</code> 时整块内容就会消失。
+      </div>
+    </div>
+
+    <!-- 官方对账 -->
+    <div class="card full">
+      <h2>官方对账（逐项 computed 值比对）</h2>
+      <div class="note">
+        <b>怎么比。</b>同一页同时加载官方 <code>gcaptcha4.css</code> 与本地 <code>gt-captcha.css</code>，
+        给两套同义 DOM（带上正确的祖先链与状态类），用 <code>getComputedStyle</code> 逐项读 15 个属性；
+        <code>@keyframes</code> 直接从 CSS 文本解析（<code>file://</code> 下读
+        <code>styleSheets[i].cssRules</code> 会抛 SecurityError）。
+      </div>
+      <div class="note" style="border-left-color:#39c522;background:#f2fbf0;color:#2f7a1c">
+        <b>切块投影。</b>官方切块的投影<b>没有 CSS</b>，是烘焙在 PNG 里的。用
+        「实心掩码平移 → 高斯模糊 → ×不透明度」做模型，对 8 道官方题联合拟合
+        （拟合域取整幅画布全像素，不透明度用闭式解 <code>Σ(m·t)/Σ(m²)</code>）：
+        <div class="mono" style="margin-top:8px;display:block;padding:8px 10px;line-height:1.9">
+          shadowBlur=9&nbsp;&nbsp;offset(2,2)&nbsp;&nbsp;rgba(0,0,0,.723)&nbsp;&nbsp;→&nbsp;&nbsp;全像素 RMSE <b>3.21 / 255</b><br>
+          （并列候选：blur8 → 3.48&nbsp;&nbsp;blur10 → 3.81&nbsp;&nbsp;方框模糊 radius7 → 4.63）
+        </div>
+        官方直边实测剖面 <code>108,93,74,57,42,30,21,14,10,8,5,3,2,1</code>，
+        模型预测 <code>106,91,78,63,50,38,27,19,13,8,4,2,0,0</code>；
+        本地实测在 d≥2 时平均绝对误差 <b>1.44 / 255</b>。
+        <br>唯一残留的 d=1 差 48/255 是<b>官方切片无抗锯齿</b>（边缘 alpha 40 → 255 一行直跳）
+        造成的，属渲染质量差异，不是参数偏差。
+      </div>
+    </div>
+
+    <!-- 用法 -->
+    <div class="card full">
+      <h2>接入方式</h2>
+<pre><span class="c">&lt;link rel="stylesheet" href="css/gt-captcha.css"&gt;</span>
+<span class="c">&lt;script src="js/gt-captcha.js"&gt;&lt;/script&gt;</span>
+
+<span class="c">// 1. 浮动式（居中弹窗 + 遮罩）</span>
+<span class="k">var</span> captcha = GtCaptcha.init({
+  el: <span class="s">'#captcha'</span>,              <span class="c">// 触发按钮挂载点</span>
+  product: <span class="s">'float'</span>,          <span class="c">// 'float' 浮动式 | 'popup' 跟随弹出</span>
+  theme: <span class="s">'light'</span>,           <span class="c">// 'light' | 'dark' 深色主题（给面板挂 .gt-dark）</span>
+  title: <span class="s">'请完成安全验证'</span>,
+  brand: <span class="s">'俱乐部电竞助手'</span>,        <span class="c">// 品牌字，替代原 GEETEST 标志</span>
+  feedbackURL: <span class="s">'https://www.7od.cn'</span>, <span class="c">// 反馈按钮跳转地址，传 '' 则不跳转</span>
+  pieceSize: <span class="k">48</span>,               <span class="c">// 拼图块边长（原图像素），官方 80，可调</span>
+  shape: <span class="s">'jigsaw'</span>,             <span class="c">// 切块形状；传数组则每题随机（官方就是随机形状池）</span>
+  closeOnSuccess: <span class="k">true</span>,         <span class="c">// 成功后自动收回面板；false 则留在原地展示结果</span>
+  renewOnFail: <span class="k">true</span>,             <span class="c">// 失败后换一题（官方行为）；false 则留在原题重试</span>
+  onSuccess: <span class="k">function</span> (res) {
+    <span class="c">// res.lot_number 需要连同业务参数一起发给后端二次校验</span>
+    submitBtn.disabled = <span class="k">false</span>;
+  },
+  onFail: <span class="k">function</span> () { <span class="c">/* 失败 */</span> }
+});
+
+<span class="c">// 2. 主动调用</span>
+captcha.show();      <span class="c">// 打开面板</span>
+captcha.refresh();   <span class="c">// 换一题</span>
+captcha.setShape(<span class="s">'star'</span>);  <span class="c">// 换切块形状（内部会换一题）</span>
+captcha.close();     <span class="c">// 关闭（带收回动画，动画结束才触发 onClose）</span>
+captcha.destroy();   <span class="c">// 销毁</span>
+
+<span class="c">// 3. 形状表：读内置形状 / 注册自己的</span>
+GtCaptcha.shapeNames();              <span class="c">// ['jigsaw','jigsaw-in', ...,'wedge','arrow']</span>
+GtCaptcha.shapes.circle.label;       <span class="c">// '圆形'</span>
+GtCaptcha.registerShape(<span class="s">'heart'</span>, { pad: ..., path: ... });
+GtCaptcha.roundedPolygon(ctx, pts, r);  <span class="c">// 画圆角多边形（wedge / arrow 就是用它写的）</span></pre>
+      <div class="note">
+        这是纯前端的界面还原，校验在浏览器本地完成。<b>生产环境必须把 lot_number 等参数交给服务端校验</b>，
+        前端只负责采集行为轨迹 —— 否则任何滑块验证都可以被一行 JS 绕过。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/gt-captcha.js"></script>
+<script>
+  var statusEl = document.getElementById('status');
+  var submitBtn = document.getElementById('submit');
+
+  var captcha = GtCaptcha.init({
+    el: '#captcha',
+    product: 'float',
+    title: '请完成安全验证',
+    brand: '俱乐部电竞助手',
+    feedbackURL: 'https://www.7od.cn',
+    onSuccess: function (res) {
+      statusEl.className = 'status ok';
+      statusEl.innerHTML = '验证通过 · lot_number: <b>' + res.lot_number + '</b>';
+      submitBtn.disabled = false;
+    },
+    onFail: function () {
+      statusEl.className = 'status err';
+      statusEl.textContent = '验证失败，请重新拖动';
+    },
+    onClose: function () {
+      if (submitBtn.disabled) {
+        statusEl.className = 'status';
+        statusEl.textContent = '请先完成安全验证';
+      }
+    }
+  });
+
+  /* 主题切换（给 .gt-box 挂 / 摘 .gt-dark） */
+  var themeBtn = document.getElementById('theme-toggle');
+  var darkOn = false;
+  themeBtn.addEventListener('click', function () {
+    darkOn = !darkOn;
+    captcha.q.box.classList.toggle('gt-dark', darkOn);
+    themeBtn.textContent = darkOn ? '浅色主题' : '深色主题';
+  });
+
+  /* 切块形状选择器 */
+  var shapesEl = document.getElementById('shapes');
+  var chips = [];
+  GtCaptcha.shapeNames().forEach(function (name) {
+    var def = GtCaptcha.shapes[name];
+    var chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'shape-chip' + (name === captcha.shape ? ' on' : '');
+    chip.textContent = def.label;
+    chip.title = "shape: '" + name + "'";
+    chip.addEventListener('click', function () {
+      chips.forEach(function (x) { x.classList.remove('on'); });
+      chip.classList.add('on');
+      submitBtn.disabled = true;
+      statusEl.className = 'status';
+      statusEl.textContent = '已切到「' + def.label + '」，请重新完成验证';
+      // 顺序不能反：setShape 内部 refresh() 会把自己置成 checking，
+      // 紧接着的 show() 里的 refresh() 就被防重入拦掉了，形状不会被覆盖。
+      captcha.setShape(name);
+      captcha.show();
+    });
+    shapesEl.appendChild(chip);
+    chips.push(chip);
+  });
+
+  document.getElementById('redo').addEventListener('click', function () {
+    submitBtn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = '请先完成安全验证';
+    captcha.reset();
+    captcha.show();
+  });
+
+  submitBtn.addEventListener('click', function () {
+    statusEl.className = 'status';
+    statusEl.textContent = '演示到此为止，真实场景请把 lot_number 提交给后端校验。';
+  });
+</script>
+</body>
+</html>

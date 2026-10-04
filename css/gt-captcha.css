@@ -1,0 +1,799 @@
+/*!
+ * gt-captcha.css — 极验第四代（GeeTest v4）风格「滑动拼图」验证组件
+ *
+ * 几何比例 / 配色 / 状态色全部取自官方 gcaptcha4.css（v1.9.7-0ad79a），
+ * 面板宽度 340px，内部一律使用官方原始百分比，因此整体可等比缩放。
+ *
+ * 可调变量（在 :root 或任意祖先元素上覆盖即可）：
+ *   --gt-primary              主色（官方 #5381fd）：触发按钮渐变条、加载态扫光
+ *   --gt-radius               面板圆角（官方 4px）
+ *   --gt-btn-w / --gt-btn-h   滑块宽高（官方 26.83% / 16.77%；默认 16% / 10%，
+ *                             与拼图块本体等宽，对齐官方「切块=按钮」的设计）
+ *   --gt-btn-radius           滑块圆角（官方 36px）
+ *   --gt-arrow-w / --gt-arrow-h  箭头尺寸（官方 19px / 16px）
+ *   --gt-track-h              轨道高度（官方 6%）
+ *
+ * 注意：拼图块（.gt-slice）的尺寸不由 CSS 决定 —— 它是一张 Canvas 生成的位图，
+ *       位置和宽高都由 JS 按实际缩放比写入。要改拼图块大小请用 init 的 pieceSize 选项。
+ */
+
+/* 焦点可见 —— 之前这里一条 :focus 规则都没有，键盘用户完全看不到焦点。
+   用 :focus-visible 而不是 :focus：鼠标点击时不会多出焦点框，
+   只有键盘/读屏导航才显示，视觉零负担。
+   官方 gcaptcha4.css 也没做（官方 a11y 同样不完整），这里按 WAI-ARIA 补上。 */
+.gt-captcha:focus-visible,
+.gt-btn:focus-visible,
+.gt-icon-btn:focus-visible {
+  outline: 2px solid var(--gt-primary, #5381fd);
+  outline-offset: 2px;
+}
+
+.gt-box-wrap:focus-visible {
+  outline: none;
+}
+
+.gt-captcha,
+.gt-box-wrap {
+  color: #292f3a;
+  font-family: Arial, "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Heiti SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+  font-size: 14px;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+
+.gt-captcha *,
+.gt-box-wrap * {
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   一、触发按钮  260 × 50（官方 .geetest_holder）
+   ========================================================================== */
+
+.gt-captcha {
+  position: relative;
+  width: 260px;
+  height: 50px;
+  background-image: linear-gradient(180deg, #fff, #f3f3f3);
+  border-radius: var(--gt-radius, 4px);
+}
+
+.gt-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid #ccc;
+  border-radius: var(--gt-radius, 4px);
+  background-image: linear-gradient(180deg, #fff, #f4f4f4);
+}
+
+/* 左侧 6px 主色竖条 */
+.gt-gradient-bar {
+  position: absolute;
+  top: 50%;
+  left: -1px;
+  width: 6px;
+  height: 103%;
+  transform: translateY(-50%);
+  border-radius: var(--gt-radius, 4px) 0 0 var(--gt-radius, 4px);
+  background-color: var(--gt-primary, #5381fd);
+  transition: all 0.3s;
+}
+
+/* 成功态：官方 .geetest_captcha.geetest_lock_success 会把触发按钮的
+   .geetest_gradient_bar 染成 #39c522（官方成功态 5 处换色之一）。
+   JS 的 _pass() 会同时给 .gt-captcha 挂上 gt-lock-success。 */
+.gt-captcha.gt-lock-success .gt-gradient-bar {
+  background-color: #39c522;
+}
+
+.gt-tip-container {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6% 0 8%;
+}
+
+.gt-tip {
+  display: inline-block;
+  color: #292f3a;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.gt-captcha:hover .gt-tip {
+  color: var(--gt-primary, #5381fd);
+}
+
+/* 触发按钮右侧品牌字（原 GEETEST 标志位） */
+.gt-captcha-brand {
+  flex: none;
+  color: #b9c0cc;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   二、验证面板  340px 宽（官方 .geetest_box_wrap / .geetest_box）
+   ========================================================================== */
+
+.gt-box-wrap {
+  position: fixed;
+  z-index: 2147483646;
+  top: 50%;
+  left: 50%;
+  display: none;
+  width: 340px;
+  max-width: 340px;
+  max-height: 386px;
+  transform: translate(-50%, -50%);
+}
+
+.gt-box-wrap.gt-open {
+  display: block;
+}
+
+/* 跟随弹出模式（product: 'popup'）：贴着触发按钮下方展开 */
+.gt-box-wrap.gt-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  transform: none;
+}
+
+/* --------------------------------------------------------------------------
+   面板开合动画 —— 官方 .geetest_box_layer / .geetest_box_btn 的原样实现
+
+   官方不是"缩放淡入"，而是**从触发按钮长出来**：
+     · 开合层里放一个 260×50 的按钮，尺寸正好等于触发按钮；
+     · showBox 让它长到 100%×100%（0.4s，cubic-bezier(.65,0,.35,1)）；
+     · 同时 :before 那条 6px 横线从左往右铺满（lineRight），
+       :after 那条 6px 竖线从满高收到 0（lineUp 反向）；
+     · 成功态两条线变绿（.geetest_lock_success … { background:#39c522 }）。
+   收起就是 showBox 反向（.geetest_hideBox）。
+
+   实测各帧（官方 CSS 跑起来用 Web Animations API 定格量的）：
+     t=  0ms  btn 260.0 ×  50.0   :before   0.0px  :after  48.0px
+     t= 80ms  btn 263.3 ×  64.0   :before  10.8px  :after  59.4px
+     t=160ms  btn 280.2 × 135.1   :before  70.1px  :after  99.5px
+     t=240ms  btn 319.8 × 302.5   :before 237.7px  :after  75.8px
+     t=320ms  btn 336.7 × 373.6   :before 320.8px  :after  15.4px
+     t=400ms  btn 340.0 × 387.6   :before 338.0px  :after   0.0px
+   -------------------------------------------------------------------------- */
+
+.gt-box-layer {
+  position: absolute;
+  z-index: 9999;
+  top: 50%;
+  left: 50%;
+  display: none;
+  box-sizing: border-box;
+  width: 100%;
+  padding-bottom: 114%;          /* 官方：面板高 = 宽 × 1.14 */
+  border-radius: var(--gt-radius, 4px);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.gt-box-wrap.gt-open .gt-box-layer {
+  display: block;
+}
+
+.gt-box-layer-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 260px;                  /* 官方：正好等于触发按钮 260 × 50 */
+  height: 50px;
+  border: 1px solid #dfdfdf;
+  border-radius: var(--gt-radius, 4px);
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02);
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+}
+
+/* 顶部 6px 横线：从左往右铺满 */
+.gt-box-layer-btn::before {
+  content: "";
+  position: absolute;
+  overflow: hidden;
+  width: 0;
+  height: 6px;
+  border-radius: 4px 4px 4px 0;
+  background-color: var(--gt-primary, #5381fd);
+}
+
+/* 左侧 6px 竖线：从满高收到 0 */
+.gt-box-layer-btn::after {
+  content: "";
+  position: absolute;
+  overflow: hidden;
+  width: 6px;
+  height: 0;
+  border-radius: 4px 0 4px 4px;
+  background-color: var(--gt-primary, #5381fd);
+}
+
+/* 开：按钮长到面板大小，横线铺开，竖线收掉 */
+.gt-box-layer-btn.gt-showBox {
+  animation: gt-showBox 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.gt-box-layer-btn.gt-showBox::before {
+  animation: gt-lineRight 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.gt-box-layer-btn.gt-showBox::after {
+  animation: gt-lineUp 0.4s cubic-bezier(0.65, 0, 0.35, 1) reverse forwards;
+}
+
+/* 收：showBox 反向，两条线的方向互换 */
+.gt-box-layer-btn.gt-hideBox {
+  animation: gt-showBox 0.4s cubic-bezier(0.65, 0, 0.35, 1) reverse forwards;
+}
+.gt-box-layer-btn.gt-hideBox::before {
+  animation: gt-lineRight 0.4s cubic-bezier(0.65, 0, 0.35, 1) reverse forwards;
+}
+.gt-box-layer-btn.gt-hideBox::after {
+  animation: gt-lineUp 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+/* 成功态：两条线转绿（官方 .geetest_lock_success） */
+.gt-box-wrap.gt-lock-success .gt-box-layer-btn::before,
+.gt-box-wrap.gt-lock-success .gt-box-layer-btn::after {
+  background-color: #39c522;
+}
+
+@keyframes gt-showBox {
+  to { width: 100%; height: 100%; }
+}
+
+@keyframes gt-lineRight {
+  99% { border-radius: 4px 4px 4px 0; }
+  to { width: 100%; border-radius: 4px 4px 0 0; }
+}
+
+@keyframes gt-lineUp {
+  to { height: 100%; }
+}
+
+/* 无动画开关，两个入口：
+     ① 手动 —— 给 <html> 或任意祖先加 .gt-no-animate（截图/测试时也用得上）
+     ② 自动 —— 系统开了「减弱动态效果」时全部关掉 */
+.gt-no-animate .gt-box-layer-btn,
+.gt-no-animate .gt-box-layer-btn::before,
+.gt-no-animate .gt-box-layer-btn::after,
+.gt-no-animate .gt-title,
+.gt-no-animate .gt-mask,
+.gt-no-animate .gt-slide {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-box-layer-btn,
+  .gt-box-layer-btn::before,
+  .gt-box-layer-btn::after,
+  .gt-title,
+  .gt-mask,
+  .gt-slide {
+    animation: none !important;
+  }
+}
+
+/* 遮罩：独立挂到 body 上。
+   注意不能放在 .gt-box-wrap 内部 —— 该元素带 transform，
+   会成为 position:fixed 子元素的包含块，遮罩就铺不满视口了。 */
+.gt-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  display: none;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* 时长与面板开合对齐（都是 0.4s） */
+.gt-mask.gt-open {
+  display: block;
+  animation: gt-fade 0.4s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes gt-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gt-mask.gt-close {
+  animation: gt-fade-out 0.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes gt-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* 真面板。开合动画期间保持隐藏 —— 否则它会盖住下面的开合层，
+   动画就白做了；动画播完 JS 才加上 .gt-box-ready 把它放出来。 */
+.gt-box {
+  position: relative;
+  z-index: 99999;
+  display: none;
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid #dedede;
+  border-top: none;
+  background: #fff;
+  border-radius: var(--gt-radius, 4px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  touch-action: none;
+}
+
+.gt-box-wrap.gt-box-ready .gt-box {
+  display: block;
+}
+
+/* 真面板就位后，开合层就没用了 */
+.gt-box-wrap.gt-box-ready .gt-box-layer {
+  display: none;
+}
+
+/* ---- 顶部标题区：高度 17.752% ---- */
+.gt-header {
+  position: relative;
+  top: 0;
+  left: 0;
+  padding-bottom: 17.752%;
+}
+
+/* 顶部 6px 状态条：默认主色，成功转绿 */
+.gt-status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background-color: var(--gt-primary, #5381fd);
+  transition: background 0.3s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.gt-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 88.76%;
+  height: 90%;
+  box-sizing: content-box;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 5.88% 0;
+  color: #292f3a;
+  font-size: 16px;
+  font-weight: 400;
+  text-align: center;
+  /* 官方：标题在面板展开后才淡入（.geetest_title 初始 opacity:0，
+     trans-opacity-scale .3s .1s forwards）。0.1s 的延迟正好接在
+     面板 0.4s 开合动画的尾段上，看起来是"内容跟着长出来"。 */
+  opacity: 0;
+}
+
+.gt-box-wrap.gt-open .gt-title {
+  animation: gt-trans-opacity-scale 0.3s 0.1s forwards;
+}
+
+@keyframes gt-trans-opacity-scale {
+  0% { opacity: 0; transform: scale(0.95); }
+  50% { transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ---- 主体容器：高度 76.924% ---- */
+.gt-container {
+  position: relative;
+  z-index: 99;
+  overflow: hidden;
+  height: 0;
+  padding-bottom: 76.924%;
+}
+
+/* 挑战区容器（对应官方 .geetest_container > .geetest_wrap）。
+   这里的 5.62% 左右内边距**是官方就有的**，不要删：
+     .geetest_box_wrap .geetest_box .geetest_container .geetest_wrap { padding: 0 5.62% }
+   官方的高度链条正好靠它闭合：
+     .geetest_container = 76.924% × 338 = 260px
+     .geetest_wrap 内容宽 = 338 - 2×5.62% = 300px
+     .geetest_slide = 87.17% × 300 = 261.5px  ← 刚好装进 260px 的容器
+   删掉这个 padding，图片区会变成 338px、slide 变成 294.6px，
+   直接撑爆容器被 overflow:hidden 切掉滑轨（已踩过一次）。 */
+.gt-wrap {
+  padding: 0 5.62%;
+}
+
+/* ==========================================================================
+   三、滑动拼图区（官方 .geetest_slide）
+   ========================================================================== */
+
+.gt-slide {
+  position: relative;
+  z-index: 99;
+  display: block;
+  overflow: hidden;
+  padding: 0 0 87.17%;
+}
+
+/* 图片窗口：宽 100%，高 66.7%（3:2） */
+.gt-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.gt-bg {
+  width: 100%;
+  padding-bottom: 66.7%;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* 拼图块：位置与尺寸由 JS 按实际缩放比写入 */
+.gt-slice {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  pointer-events: none;
+  /* 位移走 transform（见 _render），所以这里必须是 transform。
+     以前写的是 `will-change: left, top` —— 那是无效的：
+     left/top 不可合成，加 will-change 也照样触发逐帧布局重排。 */
+  will-change: transform;
+}
+
+/* 结果提示条：30px，默认藏在窗口下方，gt-show 时贴底滑入 */
+.gt-result-tips {
+  position: absolute;
+  z-index: 900;
+  bottom: -32px;
+  left: 0;
+  display: flex;
+  width: 100%;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 官方 .geetest_result_tips 是 border-radius:0 0 4px 4px，
+     和 .geetest_box 的 4px 圆角对齐（对账脚本 audit.py 报过这一项差异） */
+  border-radius: 0 0 var(--gt-radius, 4px) var(--gt-radius, 4px);
+  color: #fff;
+  font-size: 14px;
+  line-height: 30px;
+  text-align: center;
+  transition: bottom 0.3s ease-in-out;
+}
+
+.gt-result-tips.gt-show {
+  bottom: 0;
+}
+
+.gt-result-tips.gt-ok {
+  background-color: #39c522;
+}
+
+.gt-result-tips.gt-err {
+  background-color: #ff5d39;
+}
+
+.gt-result-tips.gt-warn {
+  background-color: #ffb800;
+}
+
+.gt-tips-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ==========================================================================
+   四、滑块轨道（官方 .geetest_slider / .geetest_track / .geetest_btn）
+   ========================================================================== */
+
+.gt-slider {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 20%;
+}
+
+/* 轨道：官方高 6%，圆角 10px，内阴影 */
+.gt-track {
+  position: absolute;
+  top: 50%;
+  width: 100%;
+  padding-bottom: var(--gt-track-h, 6%);
+  background-color: #dee3eb;
+  border-radius: 10px;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-50%);
+}
+
+/* 滑块按钮
+   官方原始值：宽 26.83%（80px）高 16.77%（50px），在 18px 轨道上偏大。
+   这里默认收到 20% × 12%（60 × 36），并在轨道上垂直居中
+   （官方用 top:-80% 是略微偏下的，居中后缩放更稳）。
+   改尺寸只需覆盖下面这几个变量，不用动其它样式：
+     --gt-btn-w / --gt-btn-h   宽高（相对图片宽度）
+     --gt-btn-radius           圆角
+     --gt-arrow-w / --gt-arrow-h  箭头尺寸
+   例：想完全还原官方 → :root{--gt-btn-w:26.83%;--gt-btn-h:16.77%} */
+.gt-btn {
+  position: absolute;
+  z-index: 99999;
+  top: 50%;
+  left: 0;
+  width: var(--gt-btn-w, 16%);
+  padding-bottom: var(--gt-btn-h, 10%);
+  border-radius: var(--gt-btn-radius, 36px);
+  background-color: #5682fd;
+  background-image: linear-gradient(180deg, #6d93fd, #5682fd);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.1);
+  transform: translateY(-50%);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.gt-btn:hover {
+  background-color: #6d93fd;
+  background-image: linear-gradient(180deg, #5682fd, #6d93fd);
+}
+
+.gt-btn.gt-dragging {
+  cursor: grabbing;
+  background-image: linear-gradient(180deg, #5682fd, #6d93fd);
+}
+
+.gt-btn .gt-arrow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--gt-arrow-w, 19px);
+  height: var(--gt-arrow-h, 16px);
+  transform: translate(-50%, -50%);
+  color: #fff;
+  transition: opacity 0.15s;
+}
+
+/* 按下后箭头淡出，露出「松手」提示 */
+.gt-btn.gt-dragging .gt-arrow {
+  opacity: 0.55;
+}
+
+/* 成功态：按钮变绿并收回起点，轨道保持原样（不再压暗，收回过程要看得清） */
+.gt-slide.gt-done .gt-btn {
+  cursor: default;
+  pointer-events: none;
+  background-image: none;
+  background-color: #39c522;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08);
+}
+
+.gt-slide.gt-done .gt-btn .gt-arrow {
+  opacity: 0.85;
+}
+
+/* 失败抖动 —— 官方 .geetest_shake 原样：
+   animation: geetest_shake .2s linear 2 both
+   @keyframes geetest_shake { 25%{margin-left:-6px} 75%{margin-left:6px} to{margin-left:0} }
+   注意官方抖的是 margin-left（不是 transform），而且只跑 0.2s × 2 次。 */
+.gt-shake {
+  animation: gt-shake 0.2s linear 2 both;
+}
+
+@keyframes gt-shake {
+  25% { margin-left: -6px; }
+  75% { margin-left: 6px; }
+  to { margin-left: 0; }
+}
+
+/* 换题（切换）—— 官方原样：
+     .geetest_mvToLeft { animation:mvToLeft .6s cubic-bezier(.65,0,.35,1) forwards!important }
+     .geetest_subitem  { animation:mvToCenter .6s cubic-bezier(.65,0,.35,1) .1s forwards }
+   @keyframes mvToLeft  { 0%{opacity:1;transform:scale(1) translateZ(0)}
+                          30%{opacity:1;transform:scale(.95) translateZ(0)}
+                          to{opacity:1;transform:scale(.95) translate3d(-120%,0,0)} }
+   @keyframes mvToCenter{ 0%{opacity:1;transform:scale(.95) translate3d(120%,0,0)}
+                          70%{opacity:1;transform:scale(.95) translateZ(0)}
+                          to{opacity:1;transform:scale(1) translateZ(0)} }
+   即：旧题先缩到 .95 再向左滑出画面，新题从右侧滑入并在 70% 处回到原位。
+   官方 .geetest_subitem 就是"一整个子题"（图 + 轨道 + 滑块），
+   对应本地 .gt-slide（.gt-window + .gt-slider）。 */
+.gt-slide.gt-mv-left {
+  animation: gt-mvToLeft 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.gt-slide.gt-mv-center {
+  /* 官方 .geetest_subitem 的基础样式是 opacity:0 —— 它那条 mvToCenter 动画
+     带 .1s 延迟且 fill-mode 只有 forwards（没有 backwards），所以延迟期间
+     用的是基础样式：靠 opacity:0 藏住。少了这一条，新题会先以"居中可见"
+     的状态闪 0.1s，再瞬移到右侧滑入。 */
+  opacity: 0;
+  animation: gt-mvToCenter 0.6s cubic-bezier(0.65, 0, 0.35, 1) 0.1s forwards;
+}
+
+@keyframes gt-mvToLeft {
+  0% { opacity: 1; transform: scale(1) translateZ(0); }
+  30% { opacity: 1; transform: scale(0.95) translateZ(0); }
+  to { opacity: 1; transform: scale(0.95) translate3d(-120%, 0, 0); }
+}
+
+@keyframes gt-mvToCenter {
+  0% { opacity: 1; transform: scale(0.95) translate3d(120%, 0, 0); }
+  70% { opacity: 1; transform: scale(0.95) translateZ(0); }
+  to { opacity: 1; transform: scale(1) translateZ(0); }
+}
+
+/* ==========================================================================
+   五、底部工具条（官方 .geetest_footer，高 18.935%）
+   ========================================================================== */
+
+.gt-footer {
+  position: relative;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18.935% 0 0;
+}
+
+.gt-footer-left {
+  position: absolute;
+  top: 50%;
+  left: 5.88%;
+  display: flex;
+  transform: translateY(-50%);
+}
+
+.gt-footer-right {
+  position: absolute;
+  top: 50%;
+  right: 5.88%;
+  transform: translateY(-50%);
+}
+
+.gt-icon-btn {
+  display: inline-block;
+  width: 25px;
+  height: 25px;
+  margin-right: 10px;
+  padding: 0;
+  border: none;
+  outline: 0;
+  background: transparent;
+  color: #a9adb8;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.gt-icon-btn:hover {
+  color: #7c8291;
+}
+
+.gt-icon-btn svg {
+  display: block;
+  width: 25px;
+  height: 25px;
+}
+
+.gt-icon-btn.gt-spin svg {
+  animation: gt-spin 0.6s linear;
+}
+
+@keyframes gt-spin {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}
+
+/* 底部品牌字（原 GEETEST 字标位，占位 72 × 16） */
+.gt-box-brand {
+  display: inline-block;
+  height: 16px;
+  color: #c8ccd4;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: default;
+  vertical-align: text-bottom;
+}
+
+/* 面板内加载态 —— 官方 .geetest_compute .geetest_status_bar 的 statusmove：
+   状态条变成一条彩虹渐变并横向滚动，1s 线性无限循环、延迟 .3s。 */
+.gt-box.gt-loading .gt-status-bar {
+  background-image: linear-gradient(
+    178.36deg,
+    #feac5e -0.23%,
+    #c779d0 49.92%,
+    #4bc0c8 100.07%
+  );
+  background-size: 150% 150%;
+  background-repeat: no-repeat;
+  animation: gt-statusmove 1s linear 0.3s infinite;
+}
+
+@keyframes gt-statusmove {
+  0% { background-position: 0 0; }
+  to { background-position: 100% 0; }
+}
+
+/* 触发按钮上的加载扫光 —— 官方 .geetest_holder .geetest_mask / .geetest_mask_layer 原样：
+   白底遮住按钮内容，一条 90px 宽的蓝色渐变从右往左扫，1.5s 线性无限循环。
+   官方数值：宽 90px、opacity .26、
+   background: linear-gradient(90deg, rgba(61,139,255,0), #3d7fff 47.99%, rgba(61,139,255,0))、
+   animation: setLeft 1.5s linear infinite（0% → translate(100%)，50% → -50%，100% → -250%）。 */
+.gt-captcha.gt-loading .gt-content::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background-color: #fff;
+}
+
+.gt-captcha.gt-loading .gt-content::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  width: 90px;
+  height: 100%;
+  border-radius: var(--gt-radius, 4px);
+  opacity: 0.26;
+  background: linear-gradient(
+    90deg,
+    rgba(61, 139, 255, 0),
+    #3d7fff 47.99%,
+    rgba(61, 139, 255, 0)
+  );
+  transform: translate(100%);
+  animation: gt-setLeft 1.5s linear infinite;
+}
+
+@keyframes gt-setLeft {
+  50% { transform: translate(-50%); }
+  to { transform: translate(-250%); }
+}
+
+/* 深色主题（可选，.gt-dark 加在 .gt-box 上） */
+.gt-box.gt-dark {
+  border-color: #2c3240;
+  background: #1b1f2a;
+}
+
+.gt-box.gt-dark .gt-title {
+  color: #e6e9f0;
+}
+
+.gt-box.gt-dark .gt-footer {
+  background: #1b1f2a;
+}
+
+.gt-box.gt-dark .gt-icon-btn {
+  color: #6b7385;
+}
+
+.gt-box.gt-dark .gt-icon-btn:hover {
+  color: #a9b1c4;
+}
